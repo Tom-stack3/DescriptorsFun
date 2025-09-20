@@ -3,6 +3,8 @@ PWD := $(shell pwd)
 
 obj-m := dscfun.o
 
+ccflags-y := -g -O0
+
 all:
 	make -C $(KDIR) M=$(PWD) modules
 
