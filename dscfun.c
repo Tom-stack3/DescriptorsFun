@@ -2,6 +2,8 @@
 #include <linux/module.h>
 #include <asm/desc_defs.h>
 
+#define MAX_IDT_INDEX_TO_PRINT (3)
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Me");
 MODULE_DESCRIPTION("Fun with Descriptors...");
@@ -14,7 +16,8 @@ asm(
     ".global div0_handler\n\t"
     ".p2align 4\n\t"
     "div0_handler:\n\t"
-    // // Zero RAX and RDX to make the Quotient and Remainder are zeroed out
+    "endbr64\n\t" // For CET if enabled
+    // Zero RAX and RDX to make the Quotient and Remainder are zeroed out
     "xorq %rax, %rax\n\t"
     "xorq %rdx, %rdx\n\t"
     "iretq\n\t"
@@ -46,12 +49,15 @@ static void print_idt_entries(void)
                               ((u64)original_idt[i].offset_middle << 16) |
                               ((u64)original_idt[i].offset_high << 32));
 
-        pr_info("IDT[%u] -> addr=%px type=%u dpl=%u present=%u\n",
-                entry.vector,
-                entry.addr,
-                entry.bits.type,
-                entry.bits.dpl,
-                entry.bits.p);
+        if (i <= MAX_IDT_INDEX_TO_PRINT)
+        {
+            pr_info("IDT[%u] -> addr= 0x%px type=%u dpl=%u present=%u\n",
+                    entry.vector,
+                    entry.addr,
+                    entry.bits.type,
+                    entry.bits.dpl,
+                    entry.bits.p);
+        }
     }
 }
 
