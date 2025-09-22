@@ -8,7 +8,7 @@ MODULE_DESCRIPTION("Fun with Descriptors...");
 
 void div0_handler(void);
 // Copied this weird syntex from: tools/testing/selftests/x86/check_initial_reg_state.c
-asm (
+asm(
     ".pushsection .text\n\t"
     ".type div0_handler, @function\n\t"
     ".global div0_handler\n\t"
@@ -30,16 +30,8 @@ struct idtr_val
 } __attribute__((packed));
 
 static struct idtr_val original_idtr_val = {0};
-static struct idtr_val patched_idtr_val = {0};
 // 0x100 because there can be at max 256 interrupt gate descriptors
 static gate_desc original_idt[0x100] = {0};
-static gate_desc patched_idt[0x100] __aligned(PAGE_SIZE) = {0};
-
-// Took from: arch/x86/boot/compressed/idt_64.c
-static void load_idt(const struct idtr_val *dtr)
-{
-    asm volatile("lidt %0" ::"m"(*dtr));
-}
 
 static void print_idt_entries(void)
 {
@@ -77,36 +69,45 @@ static void save_and_parse_original_idtr(void)
     print_idt_entries();
 }
 
-// static void try_to_div_by_0(void)
-// {
-//     int result;
+static void disable_interrupts(void)
+{
+    asm volatile("cli");
+}
+static void enable_interrupts(void)
+{
+    asm volatile("sti");
+}
 
-//     __asm__ __volatile__(
-//         "mov $10, %%eax\n\t"
-//         "xor %%ebx, %%ebx\n\t"
-//         "div %%ebx\n\t"
-//         : "=a"(result)
-//         :
-//         : "ebx");
-
-//     printk("Result: %d\n", result);
-// }
+static void disable_write_protect(void)
+{
+    // Disable Write Protect (bit 16 of CR0)
+    asm volatile(
+        "movq %%cr0, %%rax\n\t"
+        "andq %0, %%rax\n\t"
+        "movq %%rax, %%cr0" ::"r"(~(1UL << 16)) : "rax");
+}
+static void enable_write_protect(void)
+{
+    // Enable Write Protect (bit 16 of CR0)
+    asm volatile(
+        "movq %%cr0, %%rax\n\t"
+        "orq %0, %%rax\n\t"
+        "movq %%rax, %%cr0" ::"r"(1UL << 16) : "rax");
+}
 
 static void patch_idt_entry_0(void)
 {
-    memcpy(patched_idt, (const void *)original_idt, original_idtr_val.idt_limit + 1);
-
     // Patch the Divide by zero interrupt handler (INT0 - Divide error)
     // Copied code from: arch/x86/boot/compressed/idt_64.c -> set_idt_entry
     unsigned long address = (unsigned long)div0_handler;
 
-    patched_idt[0].offset_low = (u16)(address & 0xffff);
-    patched_idt[0].offset_middle = (u16)((address >> 16) & 0xffff);
-    patched_idt[0].offset_high = (u32)(address >> 32);
-
-    patched_idtr_val = original_idtr_val;
-    patched_idtr_val.idt_base = (uint64_t) &patched_idt[0];
-    load_idt(&patched_idtr_val);
+    disable_interrupts();
+    disable_write_protect();
+    ((gate_desc *)original_idtr_val.idt_base)->offset_low = (u16)(address & 0xffff);
+    ((gate_desc *)original_idtr_val.idt_base)->offset_middle = (u16)((address >> 16) & 0xffff);
+    ((gate_desc *)original_idtr_val.idt_base)->offset_high = (u32)(address >> 32);
+    enable_write_protect();
+    enable_interrupts();
 }
 
 static int __init dscfun_init(void)
@@ -115,9 +116,8 @@ static int __init dscfun_init(void)
     save_and_parse_original_idtr();
     patch_idt_entry_0();
     pr_info("dscfun: Changed IDTR to point at patched\n");
+    save_and_parse_original_idtr(); // To see IDT[0] again
 
-    // save_and_parse_original_idtr();
-    // try_to_div_by_0();
     pr_info("dscfun: Great success!\n");
 
     return 0;
