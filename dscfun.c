@@ -126,7 +126,6 @@ static int __init dscfun_init(void)
     save_and_parse_original_idtr();
     patch_idt_entry_0();
     pr_info("dscfun: Changed IDTR to point at patched\n");
-    save_and_parse_original_idtr(); // To see IDT[0] again
 
     pr_info("dscfun: Great success!\n");
 
@@ -135,6 +134,8 @@ static int __init dscfun_init(void)
 
 static void __exit dscfun_exit(void)
 {
+    // Need to copy back the original value...
+
     pr_info("dscfun: module unloaded\n");
 }
 
