@@ -20,6 +20,10 @@ asm(
     // Zero RAX and RDX to make the Quotient and Remainder are zeroed out
     "xorq %rax, %rax\n\t"
     "xorq %rdx, %rdx\n\t"
+    // Because INT0 is a Fault, need to advance RIP to the next instruction.
+    // I could do it with setting the TRAP flag, but then need to override INT1 handler too.
+    // Instead, just advance the RIP by 2 bytes.
+    "addq $2, (%rsp)\n\t"
     "iretq\n\t"
     ".size div0_handler, . - div0_handler\n\t"
     ".popsection");
