@@ -71,7 +71,7 @@ static void save_and_parse_original_idtr(void)
     asm volatile(
         "sidt %0\n"
         : "=m"(idtr_read));
-    pr_info("dscfun: 0x%x 0x%llx\n", idtr_read.idt_limit, idtr_read.idt_base);
+    pr_info("idtfun: 0x%x 0x%llx\n", idtr_read.idt_limit, idtr_read.idt_base);
     original_idtr_val = idtr_read;
 
     memcpy(original_idt, (const void *)idtr_read.idt_base, idtr_read.idt_limit + 1);
@@ -120,24 +120,24 @@ static void patch_idt_entry_0(void)
     enable_interrupts();
 }
 
-static int __init dscfun_init(void)
+static int __init idtfun_init(void)
 {
-    pr_info("dscfun: module loaded\n");
+    pr_info("idtfun: module loaded\n");
     save_and_parse_original_idtr();
     patch_idt_entry_0();
-    pr_info("dscfun: Changed IDTR to point at patched\n");
+    pr_info("idtfun: Changed IDTR to point at patched\n");
 
-    pr_info("dscfun: Great success!\n");
+    pr_info("idtfun: Great success!\n");
 
     return 0;
 }
 
-static void __exit dscfun_exit(void)
+static void __exit idtfun_exit(void)
 {
     // Need to copy back the original value...
 
-    pr_info("dscfun: module unloaded\n");
+    pr_info("idtfun: module unloaded\n");
 }
 
-module_init(dscfun_init);
-module_exit(dscfun_exit);
+module_init(idtfun_init);
+module_exit(idtfun_exit);
