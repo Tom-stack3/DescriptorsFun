@@ -17,7 +17,10 @@ I've decided to turn it off. Another solution might have been patching the curre
 
 ```bash
 mount -t 9p -o trans=virtio,version=9p2000.L mods /mnt
-insmod /mnt/dscfun/dscfun.ko
+insmod /mnt/dscfun/syscallfun.ko
+insmod /mnt/dscfun/syscallfun_write.ko # For actually changing the MSR, split for debugging
+/mnt/dscfun/make_syscalls.o
+
 /mnt/dscfun/zero.o
 ```
 
@@ -31,10 +34,38 @@ b asm_exc_divide_error
 b *0x401815
 b asm_exc_page_fault
 x/8gx $rsp
+
+# syscall handler if syscall num == 309
+b *0xffffffff81000080 if $rax == 0x135
+b *0x401956
+
+# break on swapgs before sysretq
+b *0xffffffff81000166
+b *0xffffffff81000170
+
+# syscall_fun_handler
+b *0xffffffffc0000100
+# syscall_fun_handler (after loading of num_of_syscalls_recorded)
+b *0xffffffffc0000117 if $r14 > 0x3e5
+# error_entry
+b *0xffffffff810017a0
+
+cat /sys/module/syscallfun/sections/.text
+
+cat /proc/kallsyms | grep syscallfun
+
+# Read stats
+# ffffffffc0201540 b syscallfun_stats
+# ffffffffc0212e88 b num_of_syscalls_recorded
+set $stats = (syscall_stat *) 0xffffffffc0201540
+set $num_called = (atomic_t *)0xffffffffc0212e88
+p $stats[10]
+p $num_called->counter
 ```
 
 ```gdb
-add-symbol-file ../../kmodules/dscfun/dscfun.ko 0xffffffffc0000000
+cd kmodules
+add-symbol-file dscfun/syscallfun.ko 0xffffffffc0000000
 ```
 
 Found the PF!!!
