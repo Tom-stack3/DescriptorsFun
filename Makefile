@@ -1,7 +1,7 @@
 KDIR := $(HOME)/dev/kernel-dev/build/linux-x86-basic
 PWD := $(shell pwd)
 
-obj-m := idtfun.o
+obj-m := idtfun.o syscallfun.o
 
 ccflags-y := -g -O0
 
