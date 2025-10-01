@@ -1,6 +1,6 @@
 # Descriptor fun Kernel Module
 
-Playing with linux kernel GDT, IDT, TSS and similar random stuff on x86-64.
+Playing with linux kernel GDT, IDT, Syscalls and similar random stuff on x86-64.
 
 Why? After learning the awesome *OpenSecurityTraining2 Architecture 2001: x86-64 OS Internals* course, I've felt like it.
 
@@ -23,10 +23,26 @@ In my handler I wanted to log the syscall happening in an array of `syscall_stat
 
 Interesting problems and bugs that I've ran into:
 - For logging stuff on the syscall to my array, I had to use a couple of registers. For that, I had to save their original value on the stack. For that, I had to use a stack. I forgot that unlike Interrupt handling, where the CPU switches the stack to point to the specified stack in the IDT entry (some stack from the `TSS`), in `syscall` opcode, the CPU doesn't do that. So your'e left with the user stack if a syscall is called from the user.
-To tackle it, the kernel uses `swapgs` to access `IA32_KERNEL_GS_BASE` which points to a kernel struct containing `current` struct. This struct contains a pointer to the `TSS`, in which the kernel stores the current top of the kernel stack.
+To tackle it, the kernel uses `swapgs` to access `IA32_KERNEL_GS_BASE` which points to the kernel's per-CPU local storage area. This area contains the `TSS`, in which the kernel stores the current top of the kernel stack.
 So for me to use a stack in my handler, I did exactly what the real handler does. `swapgs`, store the user `%rsp` in a temp place in the `TSS`, move `TSS->current top of kernel stack` into `%rsp`.
-  - Note that the real kernel syscall handler (`arch/x86/entry/entry_64.S @ SYM_CODE_START(entry_SYSCALL_64)`) uses variable macros and relocatable offsets to access the variables in the kernel's `GS`, such as the spare place in `TSS` to store the top of the kernel stack. I didn't do that. Instead, I debugged the sycall handler and put the hardcoded values in my code. This won't work for another kernel compilation, nor with `KASLR`.
-Then right before jumping to the real handler, restore everything back, as if we come from the user.
+  - Note that the real kernel syscall handler (`arch/x86/entry/entry_64.S @ SYM_CODE_START(entry_SYSCALL_64)`) uses variable macros and relocatable offsets to access the variables in the kernel's `GS`, such as the spare place in `TSS` to store the top of the kernel stack. I didn't do that. Instead, I debugged the sycall handler and put hardcoded values in my code. This won't work for another kernel compilation, nor with `KASLR`.
+
+When reading `arch/x86/include/asm/processor.h`, stumbled upon the following comment which explains exactly that:
+```c
+struct x86_hw_tss {
+	u32			reserved1;
+	u64			sp0;
+	u64			sp1;
+	/*
+	 * Since Linux does not use ring 2, the 'sp2' slot is unused by
+	 * hardware.  entry_SYSCALL_64 uses it as scratch space to stash
+	 * the user RSP value.
+	 */
+	u64			sp2;
+    // ...
+```
+Meaning that the temp place I talked about is `sp2` in the `TSS`.
+
 - I wanted to disable interrupts, in order to make the access to `num_of_syscalls_recorded` counter as atomic as possible.
 For that I used `cli`, and before jumping to the real syscall handler, `sti`. The problem is that I got weird double faults in seemingly random kernel functions (now I understand that they were all interrupt handlers). After debugging and seeing what I messed up before jumping back to the real handler, I understood that the syscall handler was called from context, where interrupts were already disabled. So running `sti` messed things up. Instead, I pushed the `EFLAGS` register to the stack with `pushfq`, and restored it with `popfq` (still with using `cli`).
 This bug happened before I fixed the stack problem. After working with a real kernel stack (by using kernel's `GS`), I tried and saw that my syscall handler is no longer called with interrupts turned off. Maybe it was because using the user stack caused `#PF` for example, and somehow it caused a syscall (?). Weird... But I'm not going to debug to dig up the answer.
